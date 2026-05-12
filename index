@@ -2,319 +2,787 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
+
 import TarotCard from '@/components/game/TarotCard';
 import PlayerAvatar from '@/components/game/PlayerAvatar';
 import BiddingPanel from '@/components/game/BiddingPanel';
 import TrickArea from '@/components/game/TrickArea';
-import ChienDisplay from '@/components/game/ChienDisplay';
 import ScoreBoard from '@/components/game/ScoreBoard';
 import RoundResultModal from '@/components/game/RoundResultModal';
 import GameInfo from '@/components/game/GameInfo';
+
 import {
-  initializeGame, processBid, processChien, playCard,
-  startNewRound, getAIBid, getAICardToPlay, getValidCards
+  initializeGame,
+  processBid,
+  processChien,
+  playCard,
+  startNewRound,
+  getAIBid,
+  getAICardToPlay,
+  getValidCards
 } from '@/lib/gameEngine';
 
 const PLAYER_NAMES = ['Vous', 'Marie', 'Pierre', 'Sophie'];
 const MY_INDEX = 0;
 
 export default function Game() {
-  const [gameState, setGameState] = useState(() => initializeGame(PLAYER_NAMES));
+
+  const [gameState, setGameState] = useState(() =>
+    initializeGame(PLAYER_NAMES)
+  );
+
   const [selectedCards, setSelectedCards] = useState([]);
-  const [selectedHandCard, setSelectedHandCard] = useState(null);
   const aiTimerRef = useRef(null);
 
   const myHand = gameState.hands[MY_INDEX] || [];
+
   const isMyTurn = gameState.currentPlayer === MY_INDEX;
   const isMeTaker = gameState.taker === MY_INDEX;
 
-  // AI turns
+  /* ======================================================
+     IA TURNS
+  ====================================================== */
+
   useEffect(() => {
+
     if (gameState.phase === 'roundEnd') return;
     if (isMyTurn) return;
 
     aiTimerRef.current = setTimeout(() => {
+
       setGameState(prev => {
+
         if (prev.currentPlayer === MY_INDEX) return prev;
 
+        /* ---------- ENCHERES ---------- */
+
         if (prev.phase === 'bidding') {
+
           const aiHand = prev.hands[prev.currentPlayer];
-          const currentHighest = prev.bids.filter(b => b.bid !== 'passe').slice(-1)[0]?.bid || null;
+
+          const currentHighest =
+            prev.bids
+              .filter(b => b.bid !== 'passe')
+              .slice(-1)[0]?.bid || null;
+
           const aiBid = getAIBid(aiHand, currentHighest);
-          return processBid(prev, prev.currentPlayer, aiBid);
+
+          return processBid(
+            prev,
+            prev.currentPlayer,
+            aiBid
+          );
         }
 
+        /* ---------- JEU ---------- */
+
         if (prev.phase === 'playing') {
+
           const aiHand = prev.hands[prev.currentPlayer];
-          const card = getAICardToPlay(aiHand, prev.currentTrick, prev.leadSuit);
-          return playCard(prev, prev.currentPlayer, card);
+
+          const card = getAICardToPlay(
+            aiHand,
+            prev.currentTrick,
+            prev.leadSuit
+          );
+
+          return playCard(
+            prev,
+            prev.currentPlayer,
+            card
+          );
         }
 
         return prev;
       });
-    }, 800 + Math.random() * 600);
+
+    }, 900 + Math.random() * 800);
 
     return () => clearTimeout(aiTimerRef.current);
-  }, [gameState.currentPlayer, gameState.phase, isMyTurn]);
 
-  // Auto-process chien for AI taker
+  }, [
+    gameState.currentPlayer,
+    gameState.phase,
+    isMyTurn
+  ]);
+
+  /* ======================================================
+     AUTO CHIEN IA
+  ====================================================== */
+
   useEffect(() => {
-    if (gameState.phase === 'chien' && gameState.taker !== MY_INDEX) {
+
+    if (
+      gameState.phase === 'chien' &&
+      gameState.taker !== MY_INDEX
+    ) {
+
       setTimeout(() => {
-        const takerHand = [...gameState.hands[gameState.taker], ...gameState.chien];
-        // AI discards lowest non-atout cards
+
+        const takerHand = [
+          ...gameState.hands[gameState.taker],
+          ...gameState.chien
+        ];
+
         const discardable = takerHand
-          .filter(c => c.type !== 'atout' && c.type !== 'excuse' && c.value !== 'R')
-          .sort((a, b) => (a.points || 0) - (b.points || 0));
-        const toDiscard = discardable.slice(0, 6).map(c => c.id);
+          .filter(c =>
+            c.type !== 'atout' &&
+            c.type !== 'excuse' &&
+            c.value !== 'R'
+          )
+          .sort((a, b) =>
+            (a.points || 0) - (b.points || 0)
+          );
+
+        const toDiscard = discardable
+          .slice(0, 6)
+          .map(c => c.id);
+
         if (toDiscard.length === 6) {
-          setGameState(prev => processChien(prev, toDiscard));
+          setGameState(prev =>
+            processChien(prev, toDiscard)
+          );
         }
-      }, 1200);
+
+      }, 1400);
     }
-  }, [gameState.phase, gameState.taker]);
+
+  }, [
+    gameState.phase,
+    gameState.taker
+  ]);
+
+  /* ======================================================
+     ACTIONS
+  ====================================================== */
 
   const handleBid = useCallback((bid) => {
-    setGameState(prev => processBid(prev, MY_INDEX, bid));
+
+    setGameState(prev =>
+      processBid(prev, MY_INDEX, bid)
+    );
+
   }, []);
 
   const handleCardPlay = useCallback((card) => {
-    if (!isMyTurn || gameState.phase !== 'playing') return;
 
-    const validCards = getValidCards(myHand, gameState.currentTrick, gameState.leadSuit);
+    if (
+      !isMyTurn ||
+      gameState.phase !== 'playing'
+    ) return;
+
+    const validCards = getValidCards(
+      myHand,
+      gameState.currentTrick,
+      gameState.leadSuit
+    );
+
     if (!validCards.find(c => c.id === card.id)) return;
 
-    setSelectedHandCard(null);
-    setGameState(prev => playCard(prev, MY_INDEX, card));
-  }, [isMyTurn, gameState.phase, myHand, gameState.currentTrick, gameState.leadSuit]);
+    setGameState(prev =>
+      playCard(prev, MY_INDEX, card)
+    );
+
+  }, [
+    isMyTurn,
+    gameState.phase,
+    myHand,
+    gameState.currentTrick,
+    gameState.leadSuit
+  ]);
 
   const handleChienCardSelect = useCallback((card) => {
+
     setSelectedCards(prev => {
-      if (prev.includes(card.id)) return prev.filter(id => id !== card.id);
+
+      if (prev.includes(card.id)) {
+        return prev.filter(id => id !== card.id);
+      }
+
       if (prev.length >= 6) return prev;
+
       return [...prev, card.id];
     });
+
   }, []);
 
   const handleChienConfirm = useCallback(() => {
-    setGameState(prev => processChien(prev, selectedCards));
+
+    setGameState(prev =>
+      processChien(prev, selectedCards)
+    );
+
     setSelectedCards([]);
+
   }, [selectedCards]);
 
   const handleNextRound = useCallback(() => {
-    setGameState(prev => startNewRound(prev));
+
+    setGameState(prev =>
+      startNewRound(prev)
+    );
+
   }, []);
 
-  // Get valid cards for highlighting
-  const validCardIds = gameState.phase === 'playing' && isMyTurn
-    ? getValidCards(myHand, gameState.currentTrick, gameState.leadSuit).map(c => c.id)
-    : [];
+  /* ======================================================
+     VALID CARDS
+  ====================================================== */
 
-  // Combine hand + chien for display during chien phase
-  const displayHand = gameState.phase === 'chien' && isMeTaker
-    ? [...myHand, ...gameState.chien].sort((a, b) => {
-        const suitOrder = { atout: 0, coeur: 1, carreau: 2, trefle: 3, pique: 4, excuse: 5 };
-        if (a.suit !== b.suit) return (suitOrder[a.suit] || 0) - (suitOrder[b.suit] || 0);
-        return 0;
-      })
-    : myHand;
+  const validCardIds =
+    gameState.phase === 'playing' && isMyTurn
+      ? getValidCards(
+          myHand,
+          gameState.currentTrick,
+          gameState.leadSuit
+        ).map(c => c.id)
+      : [];
 
-  const currentHighestBid = gameState.bids.filter(b => b.bid !== 'passe').slice(-1)[0]?.bid || null;
+  /* ======================================================
+     MAIN DISPLAY
+  ====================================================== */
+
+  const displayHand =
+    gameState.phase === 'chien' && isMeTaker
+      ? [
+          ...myHand,
+          ...gameState.chien
+        ].sort((a, b) => {
+
+          const suitOrder = {
+            atout: 0,
+            coeur: 1,
+            carreau: 2,
+            trefle: 3,
+            pique: 4,
+            excuse: 5
+          };
+
+          if (a.suit !== b.suit) {
+            return (
+              (suitOrder[a.suit] || 0) -
+              (suitOrder[b.suit] || 0)
+            );
+          }
+
+          return 0;
+        })
+      : myHand;
+
+  /* ======================================================
+     BIDS
+  ====================================================== */
+
+  const currentHighestBid =
+    gameState.bids
+      .filter(b => b.bid !== 'passe')
+      .slice(-1)[0]?.bid || null;
+
   const playerBids = gameState.bids.map(b => ({
     name: PLAYER_NAMES[b.playerIndex],
     bid: b.bid
   }));
 
   const playerNamesMap = {};
-  PLAYER_NAMES.forEach((name, i) => { playerNamesMap[i] = name; });
+
+  PLAYER_NAMES.forEach((name, i) => {
+    playerNamesMap[i] = name;
+  });
+
+  /* ======================================================
+     RENDER
+  ====================================================== */
 
   return (
-    <div className="min-h-screen flex flex-col relative overflow-hidden" style={{
-      background: 'linear-gradient(160deg, #c8a96e 0%, #b8925a 25%, #d4aa70 50%, #c09050 75%, #b88040 100%)'
-    }}>
-      {/* Wood grain texture overlay */}
-      <div className="absolute inset-0 pointer-events-none" style={{
-        backgroundImage: `repeating-linear-gradient(
-          92deg,
-          transparent,
-          transparent 18px,
-          rgba(120,70,20,0.04) 18px,
-          rgba(120,70,20,0.04) 19px
-        ), repeating-linear-gradient(
-          178deg,
-          transparent,
-          transparent 60px,
-          rgba(180,130,60,0.06) 60px,
-          rgba(180,130,60,0.06) 62px
-        )`,
-        mixBlendMode: 'multiply'
-      }} />
-      {/* Vignette */}
-      <div className="absolute inset-0 pointer-events-none" style={{
-        background: 'radial-gradient(ellipse at center, transparent 40%, rgba(80,45,10,0.35) 100%)'
-      }} />
 
-      {/* Header */}
-      <header className="relative z-10 flex items-center justify-between px-4 py-3 border-b border-amber-900/30 bg-amber-950/40 backdrop-blur-sm">
+    <div
+      className="min-h-screen flex flex-col relative overflow-hidden text-white"
+      style={{
+        background: `
+          radial-gradient(circle at center, rgba(40,90,60,0.25) 0%, rgba(15,25,18,0.92) 70%),
+          linear-gradient(145deg, #6b4423 0%, #3b2412 25%, #4d2e17 50%, #2d1a0d 100%)
+        `
+      }}
+    >
+
+      {/* =========================
+          TEXTURE BOIS
+      ========================== */}
+
+      <div
+        className="absolute inset-0 pointer-events-none opacity-40"
+        style={{
+          backgroundImage: `
+            repeating-linear-gradient(
+              90deg,
+              rgba(255,255,255,0.02) 0px,
+              rgba(255,255,255,0.02) 2px,
+              transparent 2px,
+              transparent 8px
+            ),
+            repeating-linear-gradient(
+              0deg,
+              rgba(0,0,0,0.04) 0px,
+              rgba(0,0,0,0.04) 3px,
+              transparent 3px,
+              transparent 14px
+            )
+          `
+        }}
+      />
+
+      {/* =========================
+          LUMIERE CENTRALE
+      ========================== */}
+
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(circle at center, rgba(255,220,140,0.08), transparent 60%)'
+        }}
+      />
+
+      {/* =========================
+          VIGNETTE
+      ========================== */}
+
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(circle at center, transparent 40%, rgba(0,0,0,0.55) 100%)'
+        }}
+      />
+
+      {/* =========================
+          HEADER
+      ========================== */}
+
+      <header className="relative z-10 flex items-center justify-between px-5 py-3 border-b border-amber-900/30 bg-black/20 backdrop-blur-md">
+
         <div className="flex items-center gap-3">
+
           <Link to="/">
-            <Button variant="ghost" size="icon" className="text-muted-foreground">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-zinc-300 hover:text-white"
+            >
               <ArrowLeft className="w-5 h-5" />
             </Button>
           </Link>
-          <h1 className="font-display text-lg font-bold text-foreground">Tarot</h1>
+
+          <h1 className="text-xl font-bold tracking-wide text-amber-100">
+            Tarot Syloa
+          </h1>
+
         </div>
+
         <GameInfo
           phase={gameState.phase}
           trickCount={gameState.trickCount}
           takerBid={gameState.takerBid}
-          takerName={gameState.taker !== null ? PLAYER_NAMES[gameState.taker] : null}
+          takerName={
+            gameState.taker !== null
+              ? PLAYER_NAMES[gameState.taker]
+              : null
+          }
         />
+
       </header>
 
-      {/* Game Table */}
+      {/* =========================
+          TABLE
+      ========================== */}
+
       <div className="flex-1 relative z-10 flex flex-col">
-        {/* Top player */}
-        <div className="flex justify-center py-3">
-          <PlayerAvatar
-            name={PLAYER_NAMES[2]}
-            isActive={gameState.currentPlayer === 2}
-            isDealer={gameState.dealer === 2}
-            isTaker={gameState.taker === 2}
-            cardCount={gameState.hands[2]?.length}
-          />
+
+        {/* TOP PLAYER */}
+
+        <div className="flex justify-center py-5">
+
+          <motion.div
+            animate={
+              gameState.currentPlayer === 2
+                ? {
+                    scale: [1, 1.05, 1],
+                    boxShadow: [
+                      '0 0 0px rgba(255,215,0,0)',
+                      '0 0 30px rgba(255,215,0,0.4)',
+                      '0 0 0px rgba(255,215,0,0)'
+                    ]
+                  }
+                : {}
+            }
+            transition={{
+              duration: 2,
+              repeat: Infinity
+            }}
+            className="rounded-full"
+          >
+            <PlayerAvatar
+              name={PLAYER_NAMES[2]}
+              isActive={gameState.currentPlayer === 2}
+              isDealer={gameState.dealer === 2}
+              isTaker={gameState.taker === 2}
+              cardCount={gameState.hands[2]?.length}
+            />
+          </motion.div>
+
         </div>
 
-        {/* Middle row */}
-        <div className="flex-1 flex items-center justify-between px-4">
-          {/* Left player */}
-          <PlayerAvatar
-            name={PLAYER_NAMES[1]}
-            isActive={gameState.currentPlayer === 1}
-            isDealer={gameState.dealer === 1}
-            isTaker={gameState.taker === 1}
-            cardCount={gameState.hands[1]?.length}
-          />
+        {/* MIDDLE */}
 
-          {/* Center - trick area or bidding */}
+        <div className="flex-1 flex items-center justify-between px-6">
+
+          {/* LEFT */}
+
+          <motion.div
+            animate={
+              gameState.currentPlayer === 1
+                ? {
+                    scale: [1, 1.05, 1],
+                    boxShadow: [
+                      '0 0 0px rgba(255,215,0,0)',
+                      '0 0 30px rgba(255,215,0,0.4)',
+                      '0 0 0px rgba(255,215,0,0)'
+                    ]
+                  }
+                : {}
+            }
+            transition={{
+              duration: 2,
+              repeat: Infinity
+            }}
+            className="rounded-full"
+          >
+            <PlayerAvatar
+              name={PLAYER_NAMES[1]}
+              isActive={gameState.currentPlayer === 1}
+              isDealer={gameState.dealer === 1}
+              isTaker={gameState.taker === 1}
+              cardCount={gameState.hands[1]?.length}
+            />
+          </motion.div>
+
+          {/* CENTER */}
+
           <div className="flex-1 flex items-center justify-center">
+
             <AnimatePresence mode="wait">
+
               {gameState.phase === 'bidding' && (
-                <BiddingPanel
+
+                <motion.div
                   key="bidding"
-                  onBid={handleBid}
-                  currentHighestBid={currentHighestBid}
-                  isMyTurn={isMyTurn}
-                  playerBids={playerBids}
-                />
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="
+                    bg-black/25
+                    backdrop-blur-md
+                    rounded-2xl
+                    border border-white/10
+                    shadow-2xl
+                    p-4
+                  "
+                >
+
+                  <BiddingPanel
+                    onBid={handleBid}
+                    currentHighestBid={currentHighestBid}
+                    isMyTurn={isMyTurn}
+                    playerBids={playerBids}
+                  />
+
+                </motion.div>
+
               )}
+
               {gameState.phase === 'chien' && !isMeTaker && (
+
                 <motion.div
                   key="chien-wait"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="text-center"
+                  className="
+                    bg-black/30
+                    backdrop-blur-md
+                    rounded-2xl
+                    px-6 py-5
+                    text-center
+                  "
                 >
-                  <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">
+
+                  <div className="w-10 h-10 border-2 border-amber-300 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+
+                  <p className="text-sm text-amber-100">
                     {PLAYER_NAMES[gameState.taker]} fait son écart...
                   </p>
+
                 </motion.div>
+
               )}
+
               {gameState.phase === 'playing' && (
-                <TrickArea
+
+                <motion.div
                   key="trick"
-                  currentTrick={gameState.currentTrick}
-                  myPlayerIndex={MY_INDEX}
-                />
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="
+                    rounded-full
+                    p-8
+                    bg-black/10
+                    backdrop-blur-sm
+                  "
+                >
+
+                  <TrickArea
+                    currentTrick={gameState.currentTrick}
+                    myPlayerIndex={MY_INDEX}
+                  />
+
+                </motion.div>
+
               )}
+
             </AnimatePresence>
+
           </div>
 
-          {/* Right player */}
-          <PlayerAvatar
-            name={PLAYER_NAMES[3]}
-            isActive={gameState.currentPlayer === 3}
-            isDealer={gameState.dealer === 3}
-            isTaker={gameState.taker === 3}
-            cardCount={gameState.hands[3]?.length}
-          />
+          {/* RIGHT */}
+
+          <motion.div
+            animate={
+              gameState.currentPlayer === 3
+                ? {
+                    scale: [1, 1.05, 1],
+                    boxShadow: [
+                      '0 0 0px rgba(255,215,0,0)',
+                      '0 0 30px rgba(255,215,0,0.4)',
+                      '0 0 0px rgba(255,215,0,0)'
+                    ]
+                  }
+                : {}
+            }
+            transition={{
+              duration: 2,
+              repeat: Infinity
+            }}
+            className="rounded-full"
+          >
+            <PlayerAvatar
+              name={PLAYER_NAMES[3]}
+              isActive={gameState.currentPlayer === 3}
+              isDealer={gameState.dealer === 3}
+              isTaker={gameState.taker === 3}
+              cardCount={gameState.hands[3]?.length}
+            />
+          </motion.div>
+
         </div>
 
-        {/* Chien display (for taker) */}
+        {/* CHIEN INFO */}
+
         {gameState.phase === 'chien' && isMeTaker && (
+
           <div className="px-4 pb-2">
-            <p className="text-xs text-center text-muted-foreground mb-2">
-              Sélectionnez 6 cartes de votre main à écarter
+
+            <p className="text-sm text-amber-100/90 text-center mb-3">
+              Sélectionnez 6 cartes à écarter
             </p>
+
           </div>
+
         )}
 
-        {/* Bottom - my hand */}
-        <div className="py-3 pb-4">
-          <div className="flex justify-center mb-2">
-            <PlayerAvatar
-              name={PLAYER_NAMES[0]}
-              isActive={isMyTurn}
-              isDealer={gameState.dealer === 0}
-              isTaker={gameState.taker === 0}
-            />
+        {/* MY HAND */}
+
+        <div className="py-4 pb-6">
+
+          <div className="flex justify-center mb-3">
+
+            <motion.div
+              animate={
+                isMyTurn
+                  ? {
+                      scale: [1, 1.05, 1],
+                      boxShadow: [
+                        '0 0 0px rgba(255,215,0,0)',
+                        '0 0 40px rgba(255,215,0,0.45)',
+                        '0 0 0px rgba(255,215,0,0)'
+                      ]
+                    }
+                  : {}
+              }
+              transition={{
+                duration: 2,
+                repeat: Infinity
+              }}
+              className="rounded-full"
+            >
+
+              <PlayerAvatar
+                name={PLAYER_NAMES[0]}
+                isActive={isMyTurn}
+                isDealer={gameState.dealer === 0}
+                isTaker={gameState.taker === 0}
+              />
+
+            </motion.div>
+
           </div>
-          <div className="flex justify-center gap-0.5 md:gap-1 px-2 overflow-x-auto pb-2">
-            {displayHand.map((card) => {
-              const isValid = gameState.phase === 'playing' && isMyTurn && validCardIds.includes(card.id);
-              const isChienSelectable = gameState.phase === 'chien' && isMeTaker;
-              const isSelected = selectedCards.includes(card.id);
+
+          {/* HAND */}
+
+          <div className="flex justify-center gap-2 md:gap-3 px-4 overflow-x-auto pb-3">
+
+            {displayHand.map((card, index) => {
+
+              const isValid =
+                gameState.phase === 'playing' &&
+                isMyTurn &&
+                validCardIds.includes(card.id);
+
+              const isChienSelectable =
+                gameState.phase === 'chien' &&
+                isMeTaker;
+
+              const isSelected =
+                selectedCards.includes(card.id);
 
               return (
-                <TarotCard
+
+                <motion.div
                   key={card.id}
-                  card={card}
-                  selected={isSelected}
-                  disabled={gameState.phase === 'playing' ? !isValid : !isChienSelectable}
-                  onClick={() => {
-                    if (isChienSelectable) {
-                      handleChienCardSelect(card);
-                    } else if (isValid) {
-                      handleCardPlay(card);
-                    }
+                  initial={{
+                    opacity: 0,
+                    y: 40
                   }}
-                />
+                  animate={{
+                    opacity: 1,
+                    y: 0,
+                    rotate: (index % 2 === 0 ? -1 : 1)
+                  }}
+                  whileHover={{
+                    y: -12,
+                    scale: 1.08,
+                    rotate: 0
+                  }}
+                  transition={{
+                    type: 'spring',
+                    stiffness: 300,
+                    damping: 20
+                  }}
+                  className={`
+                    rounded-2xl
+                    shadow-2xl
+                    ${isValid ? 'brightness-100' : 'brightness-75'}
+                  `}
+                >
+
+                  <TarotCard
+                    card={card}
+                    selected={isSelected}
+                    disabled={
+                      gameState.phase === 'playing'
+                        ? !isValid
+                        : !isChienSelectable
+                    }
+                    onClick={() => {
+
+                      if (isChienSelectable) {
+                        handleChienCardSelect(card);
+                      }
+                      else if (isValid) {
+                        handleCardPlay(card);
+                      }
+
+                    }}
+                  />
+
+                </motion.div>
+
               );
             })}
+
           </div>
-          {gameState.phase === 'chien' && isMeTaker && selectedCards.length === 6 && (
-            <div className="flex justify-center mt-2">
-              <Button onClick={handleChienConfirm} className="bg-primary text-primary-foreground">
-                Confirmer l'écart ({selectedCards.length}/6)
+
+          {/* CHIEN BUTTON */}
+
+          {gameState.phase === 'chien' &&
+            isMeTaker &&
+            selectedCards.length === 6 && (
+
+            <div className="flex justify-center mt-3">
+
+              <Button
+                onClick={handleChienConfirm}
+                className="
+                  bg-amber-500
+                  hover:bg-amber-400
+                  text-black
+                  font-bold
+                  rounded-xl
+                  shadow-xl
+                  px-6
+                "
+              >
+                Confirmer l'écart
               </Button>
+
             </div>
+
           )}
+
         </div>
+
       </div>
 
-      {/* Score sidebar */}
-      <div className="absolute top-16 right-3 z-20 w-44 hidden lg:block">
-        <ScoreBoard
-          scores={gameState.scores}
-          playerNames={playerNamesMap}
-          currentTaker={gameState.taker}
-        />
+      {/* SCORE */}
+
+      <div className="absolute top-20 right-4 z-20 w-48 hidden lg:block">
+
+        <div className="
+          bg-black/25
+          backdrop-blur-md
+          rounded-2xl
+          border border-white/10
+          shadow-2xl
+          overflow-hidden
+        ">
+
+          <ScoreBoard
+            scores={gameState.scores}
+            playerNames={playerNamesMap}
+            currentTaker={gameState.taker}
+          />
+
+        </div>
+
       </div>
 
-      {/* Round result modal */}
+      {/* ROUND END */}
+
       <AnimatePresence>
+
         {gameState.phase === 'roundEnd' && (
+
           <RoundResultModal
             result={gameState.roundResult}
             playerNames={PLAYER_NAMES}
             scores={gameState.scores}
             onNextRound={handleNextRound}
           />
+
         )}
+
       </AnimatePresence>
+
     </div>
   );
 }
